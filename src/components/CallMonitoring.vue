@@ -37,14 +37,30 @@ const paging = ref<Paging>({
 });
 const loading = ref(false);
 const error = ref<string | null>(null);
-
 const search = ref('');
+const startDate = ref('');
+const endDate = ref('');
+const sentiment = ref('');
+const sortColumn = ref('csName');
+const sortDirection = ref('asc');
+
+const today = new Date();
+const threeMonthsAgo = new Date();
+threeMonthsAgo.setMonth(today.getMonth() - 3);
+
+const maxDate = today.toISOString().split('T')[0];
+const minDate = threeMonthsAgo.toISOString().split('T')[0];
 const buildUrl = () => {
   const url = new URL(import.meta.env.VITE_API_URL || '/api/v1/call-monitoring', window.location.origin);
   
   if (search.value) url.searchParams.append('search', search.value);
   url.searchParams.append('page', paging.value.page.toString());
   url.searchParams.append('size', paging.value.size.toString());
+  if (sortColumn.value) url.searchParams.append('sort', sortColumn.value);
+  if (sortDirection.value) url.searchParams.append('direction', sortDirection.value);
+  if (startDate.value) url.searchParams.append('startDate', startDate.value);
+  if (endDate.value) url.searchParams.append('endDate', endDate.value);
+  if (sentiment.value) url.searchParams.append('sentiment', sentiment.value);
 
   return url.toString();
 };
@@ -66,11 +82,19 @@ const fetchData = async () => {
   } finally {
     loading.value = false;
   }
+};const handleSort = (column: string) => {
+  if (sortColumn.value === column) {
+    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortColumn.value = column;
+    sortDirection.value = 'asc';
+  }
 };
 
-
-
-
+const changePage = (newPage: number) => {
+  paging.value.page = newPage;
+  fetchData();
+};
 const formatDate = (dateStr: string) => {
   if (!dateStr) return '-';
   const date = new Date(dateStr);
@@ -86,14 +110,12 @@ const getSentimentBadgeClass = (score: number) => {
   return 'badge-danger';
 };
 
-watch([search, () => paging.value.size], () => {
+watch([search, startDate, endDate, sentiment, sortColumn, sortDirection, () => paging.value.size], () => {
   paging.value.page = 1; 
   fetchData();
 });
 
-watch(() => paging.value.page, () => {
-  fetchData();
-});
+
 
 onMounted(() => {
   fetchData();
@@ -114,7 +136,38 @@ onMounted(() => {
         />
       </div>
 
+      <div class="filter-group">
+        <label for="startDate">Start Date</label>
+        <input 
+          id="startDate" 
+          type="date" 
+          v-model="startDate" 
+          :min="minDate" 
+          :max="maxDate"
+          class="input-field" 
+        />
+      </div>
 
+      <div class="filter-group">
+        <label for="endDate">End Date</label>
+        <input 
+          id="endDate" 
+          type="date" 
+          v-model="endDate" 
+          :min="startDate || minDate" 
+          :max="maxDate"
+          class="input-field" 
+        />
+      </div>
+
+      <div class="filter-group">
+        <label for="sentiment">Sentiment</label>
+        <select id="sentiment" v-model="sentiment" class="input-field">
+          <option value="">All</option>
+          <option value="BELOW_70">Di bawah 70%</option>
+          <option value="ABOVE_OR_EQUAL_70">70% atau lebih</option>
+        </select>
+      </div>
     </div>
 
     <div v-if="error" class="empty-state" style="color: var(--danger)">
@@ -126,17 +179,35 @@ onMounted(() => {
         <thead>
           <tr>
             <th>No.</th>
-            <th>Call ID</th>
-            <th>Call Timestamp</th>
-            <th>CS Name</th>
-            <th>Nama Nasabah</th>
-            <th>Sentiment Score</th>
+            <th @click="handleSort('callId')" class="sortable" :class="{ 'active-sort': sortColumn === 'callId' }">
+              Call ID
+              <span class="sort-icon">{{ sortColumn === 'callId' && sortDirection === 'desc' ? '▼' : '▲' }}</span>
+            </th>
+            <th @click="handleSort('callTimestamp')" class="sortable" :class="{ 'active-sort': sortColumn === 'callTimestamp' }">
+              Call Timestamp
+              <span class="sort-icon">{{ sortColumn === 'callTimestamp' && sortDirection === 'desc' ? '▼' : '▲' }}</span>
+            </th>
+            <th @click="handleSort('csName')" class="sortable" :class="{ 'active-sort': sortColumn === 'csName' }">
+              CS Name
+              <span class="sort-icon">{{ sortColumn === 'csName' && sortDirection === 'desc' ? '▼' : '▲' }}</span>
+            </th>
+            <th @click="handleSort('customerName')" class="sortable" :class="{ 'active-sort': sortColumn === 'customerName' }">
+              Nama Nasabah
+              <span class="sort-icon">{{ sortColumn === 'customerName' && sortDirection === 'desc' ? '▼' : '▲' }}</span>
+            </th>
+            <th @click="handleSort('sentimentScore')" class="sortable" :class="{ 'active-sort': sortColumn === 'sentimentScore' }">
+              Sentiment Score
+              <span class="sort-icon">{{ sortColumn === 'sentimentScore' && sortDirection === 'desc' ? '▼' : '▲' }}</span>
+            </th>
           </tr>
         </thead>
         
         <tbody v-if="loading && records.length === 0">
           <tr>
-            <td colspan="6" class="empty-state">Loading data...</td>
+            <td colspan="6" class="empty-state">
+              <div class="spinner"></div>
+              <p>Memuat data...</p>
+            </td>
           </tr>
         </tbody>
 
@@ -168,6 +239,32 @@ onMounted(() => {
       </table>
     </div>
 
-
+    <div class="pagination" v-if="records.length > 0">
+      <div class="pagination-info">
+        Showing {{ (paging.page - 1) * paging.size + 1 }} to {{ Math.min(paging.page * paging.size, paging.totalElements) }} of {{ paging.totalElements }} records
+      </div>
+      <div class="pagination-controls">
+        <select v-model="paging.size" class="input-field" style="min-width: 80px; padding: 0.35rem 0.5rem; height: 100%; align-self: center;">
+          <option :value="5">5 / page</option>
+          <option :value="10">10 / page</option>
+          <option :value="20">20 / page</option>
+          <option :value="50">50 / page</option>
+        </select>
+        <button 
+          class="btn" 
+          :disabled="!paging.hasPrevious" 
+          @click="changePage(paging.page - 1)"
+        >
+          Previous
+        </button>
+        <button 
+          class="btn" 
+          :disabled="!paging.hasNext" 
+          @click="changePage(paging.page + 1)"
+        >
+          Next
+        </button>
+      </div>
+    </div>
   </div>
 </template>
