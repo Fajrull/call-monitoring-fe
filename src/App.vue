@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import HelloWorld from './components/HelloWorld.vue'
+import CallMonitoring from './components/CallMonitoring.vue'
 </script>
 
 <template>
-  <HelloWorld />
+  <div class="container">
+    <h1>Take-Home Call Monitoring</h1>
+    <CallMonitoring />
+  </div>
 </template>
